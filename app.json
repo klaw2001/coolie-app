@@ -37,7 +37,16 @@
           "imageWidth": 140
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "useLegacyPackaging": true,
+            "enableBundleCompression": true
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": false,

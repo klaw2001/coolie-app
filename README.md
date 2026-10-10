@@ -26,9 +26,11 @@ To build the APK yourself (needs JDK 17+ and the Android SDK with `ANDROID_HOME`
 
 ```bash
 npx expo prebuild -p android
-cd android && ./gradlew assembleRelease
-# → android/app/build/outputs/apk/release/app-release.apk
+cd android && ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
+# → android/app/build/outputs/apk/release/app-release.apk (about 30 MB)
 ```
+
+`arm64-v8a` covers practically every Android phone sold in recent years. Leave the flag out for a universal APK that also runs on 32-bit phones and emulators (about 60 MB). Native libraries and the JS bundle are compressed in the APK (`expo-build-properties` in `app.json`) to keep it small.
 
 Or build it in Expo's cloud with EAS Build (free Expo account): add a profile with `"android": { "buildType": "apk" }` to `eas.json`, then run `npx eas-cli@latest build -p android --profile <name>`.
 
