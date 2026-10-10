@@ -1,0 +1,8 @@
+# Regenerable intermediates (see "Re-render" in brag-plan.md)
+work/shots/
+work/fonts/
+work/stills/
+work/vframes/
+work/detail/
+work/*.png
+work/soundtrack.wav
