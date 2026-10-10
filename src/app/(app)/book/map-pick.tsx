@@ -7,7 +7,7 @@ import { PickMap } from '@/components/map/PickMap';
 import { Button, Chip, Field, Icon, Row, StickyFooter, TopBar, Txt } from '@/components/ui';
 import { AREAS, nearestArea } from '@/data/areas';
 import { MAX_HOME_KM, PER_KM } from '@/data/fare';
-import { station } from '@/data/stations';
+import { coachPlace, station } from '@/data/stations';
 import { loc, useLang, useT } from '@/i18n';
 import { useApp } from '@/store/useApp';
 import type { Address, LatLng } from '@/store/types';
@@ -40,8 +40,10 @@ export default function MapPick() {
       router.back();
       return;
     }
+    const train = draft.train;
     patchDraft({
       meet: { kind: 'address', id: a.id, title: a.line, subtitle: area.name, subtitleHi: area.nameHi, coord },
+      ...(train ? { drop: coachPlace(st, train.coach, train.platform) } : null),
       distanceKm: d,
     });
     router.back();

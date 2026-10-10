@@ -18,6 +18,28 @@ npx expo start
 
 Scan the QR code with **Expo Go** (Android) or the Camera app (iOS). Your phone and computer need to be on the same Wi-Fi. If they aren't, use `npx expo start --tunnel`.
 
+### Android APK (no computer needed at the demo)
+
+The app also installs as a normal Android app, `com.coolie.app`. It runs fully offline, because all data is dummy data stored on the phone.
+
+To build the APK yourself (needs JDK 17+ and the Android SDK with `ANDROID_HOME` set):
+
+```bash
+npx expo prebuild -p android
+cd android && ./gradlew assembleRelease
+# → android/app/build/outputs/apk/release/app-release.apk
+```
+
+Or build it in Expo's cloud with EAS Build (free Expo account): add a profile with `"android": { "buildType": "apk" }` to `eas.json`, then run `npx eas-cli@latest build -p android --profile <name>`.
+
+To install it, copy the APK to the phone and open it. Allow *Install unknown apps* when Android asks, and tap *Install anyway* if Play Protect warns about an unknown developer.
+
+### iPhone
+
+An iPhone app can't be sideloaded like an APK. You need either:
+- **Expo Go** on the iPhone, with your computer running `npx expo start --tunnel`; or
+- a paid **Apple Developer Program** account. EAS Build can then build in the cloud (no Mac needed) for TestFlight, or for an ad hoc build installed on registered iPhones.
+
 ## Two apps, two logins
 
 The first screen is a gateway with two doors:
@@ -123,6 +145,10 @@ All state lives on the device (AsyncStorage). *Profile → Reset demo data* wipe
 
 ## Notes
 
-- Maps use `react-native-maps`, which works in Expo Go with no API key. A store build would need a Google Maps key (see the Expo docs).
+- Maps: Expo Go and iOS show real map tiles (`react-native-maps`). A standalone Android build has no Google Maps key yet, so it shows the app's own drawn city map instead (`src/components/map/CityMap.tsx`): streets, parks, railway lines, station platforms and a waiting train, with drag and pinch-zoom. To switch the APK to real tiles, add the key and rebuild:
+  ```json
+  "plugins": [["react-native-maps", { "androidGoogleMapsApiKey": "YOUR_KEY" }]]
+  ```
+  The app detects the key and uses the real map automatically (see `src/components/map/provider.ts`).
 - Calls are simulated in-app. Only the SOS sheet opens the real phone dialler, and it asks you to confirm first.
-- The web build (`npx expo start --web`) works for quick previews, but maps there are a simple placeholder. The app is meant for Expo Go.
+- The web build (`npx expo start --web`) works for quick previews and uses the drawn map.

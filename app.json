@@ -9,9 +9,12 @@
     "userInterfaceStyle": "light",
     "backgroundColor": "#FBF6F4",
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "com.coolie.app"
     },
     "android": {
+      "package": "com.coolie.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#D3252B",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
