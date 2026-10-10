@@ -10,7 +10,7 @@ export interface CoolieSeed {
 
 /** Dummy roster of licensed porters. Each gets a station-specific brass badge ("billa") number. */
 export const COOLIES: CoolieSeed[] = [
-  { id: 'k1', name: 'Ramesh Yadav', nameHi: 'रमेश यादव', rating: 4.9, trips: 3240, years: 14, phone: '9820041177' },
+  { id: 'k1', name: 'Dinesh Chauhan', nameHi: 'दिनेश चौहान', rating: 4.9, trips: 3105, years: 13, phone: '9820041188' },
   { id: 'k2', name: 'Suresh Kumar', nameHi: 'सुरेश कुमार', rating: 4.8, trips: 2185, years: 9, phone: '9811023456' },
   { id: 'k3', name: 'Mohammad Iqbal', nameHi: 'मोहम्मद इक़बाल', rating: 4.9, trips: 4012, years: 18, phone: '9830077812' },
   { id: 'k4', name: 'Raju Paswan', nameHi: 'राजू पासवान', rating: 4.7, trips: 1320, years: 6, phone: '9431088215' },
@@ -23,7 +23,7 @@ export const COOLIES: CoolieSeed[] = [
 ];
 
 export const PASSENGERS = [
-  { name: 'Ananya Sharma', phone: '9876501234' },
+  { name: 'Neha Kulkarni', phone: '9876512345' },
   { name: 'Rahul Verma', phone: '9988012345' },
   { name: 'Priya Nair', phone: '9447012399' },
   { name: 'Vikram Rao', phone: '9900123456' },
@@ -41,4 +41,21 @@ export function badgeNo(stationCode: string, id: string): string {
   let n = 0;
   for (let i = 0; i < id.length; i++) n = (n * 31 + id.charCodeAt(i)) % 900;
   return `${stationCode}-${n + 100}`;
+}
+
+export const LANGUAGES: { en: string; hi: string }[] = [
+  { en: 'Hindi', hi: 'हिंदी' },
+  { en: 'English', hi: 'अंग्रेज़ी' },
+  { en: 'Marathi', hi: 'मराठी' },
+  { en: 'Gujarati', hi: 'गुजराती' },
+  { en: 'Bengali', hi: 'बंगाली' },
+  { en: 'Tamil', hi: 'तमिल' },
+  { en: 'Telugu', hi: 'तेलुगु' },
+  { en: 'Kannada', hi: 'कन्नड़' },
+  { en: 'Urdu', hi: 'उर्दू' },
+  { en: 'Bhojpuri', hi: 'भोजपुरी' },
+];
+
+export function languageLabel(en: string, lang: 'en' | 'hi'): string {
+  return lang === 'hi' ? (LANGUAGES.find((l) => l.en === en)?.hi ?? en) : en;
 }

@@ -8,6 +8,7 @@ import { CoolieCard } from '@/components/CoolieCard';
 import { JourneyArt } from '@/components/JourneyArt';
 import { LiveLayout, SosButton, type LiveView } from '@/components/LiveLayout';
 import { TripSteps } from '@/components/PlatformTracker';
+import { PartnerLogo } from '@/components/Logo';
 import { SearchingPulse } from '@/components/SearchingPulse';
 import { SosSheet } from '@/components/SosSheet';
 import { TripDetails } from '@/components/TripDetails';
@@ -18,7 +19,7 @@ import { useBooking } from '@/hooks/useBooking';
 import { useNow } from '@/hooks/useNow';
 import { loc, useLang, useT, type TKey } from '@/i18n';
 import { useApp } from '@/store/useApp';
-import { C, R } from '@/theme';
+import { C, PC, R } from '@/theme';
 import { fmtDateTime, fmtTime, rupee } from '@/utils/format';
 import { backToTab } from '@/utils/nav';
 
@@ -28,11 +29,10 @@ export default function Trip() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const b = useBooking(id);
   const now = useNow(500);
-  const role = useApp((s) => s.role);
-  const roleSince = useApp((s) => s.roleSince);
-  const hasCoolie = useApp((s) => !!s.coolie);
-  const setRole = useApp((s) => s.setRole);
-  const setOnline = useApp((s) => s.setOnline);
+  const sessionSince = useApp((s) => s.session?.since ?? 0);
+  const holdForPartner = useApp((s) => s.holdForPartner);
+  const setAuthIntent = useApp((s) => s.setAuthIntent);
+  const logout = useApp((s) => s.logout);
   const cancelBooking = useApp((s) => s.cancelBooking);
   const startNow = useApp((s) => s.startNow);
   const createIntent = useApp((s) => s.createIntent);
@@ -71,14 +71,11 @@ export default function Trip() {
   const st = station(b.stationCode);
   const point = loc(lang, b.meet.title, b.meet.titleHi);
 
-  const playCoolie = () => {
-    if (!hasCoolie) {
-      router.push({ pathname: '/setup', params: { role: 'coolie' } });
-      return;
-    }
-    setRole('coolie');
-    setOnline(true);
-    router.replace('/');
+  // Demo hand-off: keep the request open for a real partner account, sign out, and open the Coolie Partner login.
+  const openPartnerApp = () => {
+    holdForPartner(b.id, true);
+    setAuthIntent('coolie');
+    logout();
   };
 
   if (b.status === 'payment_pending') {
@@ -92,8 +89,9 @@ export default function Trip() {
   }
 
   if (b.status === 'searching') {
-    const from = Math.max(b.searchFrom ?? b.statusAt, roleSince);
+    const from = Math.max(b.searchFrom ?? b.statusAt, sessionSince);
     const secs = Math.max(0, Math.ceil((AUTO_ACCEPT_MS - (now - from)) / 1000));
+    const stName = loc(lang, st.name, st.nameHi);
     return (
       <Screen
         header={<TopBar />}
@@ -105,26 +103,35 @@ export default function Trip() {
         <View style={s.searchTop}>
           <SearchingPulse />
           <Txt v="h1" center>
-            {t('trip.searching')}
+            {b.holdForPartner ? t('trip.heldTitle') : t('trip.searching')}
           </Txt>
           <Txt v="body" color={C.inkSoft} center>
-            {t('trip.searchingSub', { point: b.journeyType === 'train_to_exit' ? loc(lang, st.name, st.nameHi) : point })}
+            {b.holdForPartner
+              ? t('trip.heldBody', { station: stName })
+              : t('trip.searchingSub', { point: b.journeyType === 'train_to_exit' ? stName : point })}
           </Txt>
-          <View style={s.countdown}>
-            <Icon name="timer-sand" size={16} color={C.amber} />
-            <Txt v="smallMed" color={C.amber}>
-              {role === 'coolie' ? t('trip.waitingYou') : t('trip.autoIn', { s: secs })}
-            </Txt>
-          </View>
+          {!b.holdForPartner ? (
+            <View style={s.countdown}>
+              <Icon name="timer-sand" size={16} color={C.amber} />
+              <Txt v="smallMed" color={C.amber}>
+                {t('trip.autoIn', { s: secs })}
+              </Txt>
+            </View>
+          ) : null}
         </View>
-        <Card style={{ gap: 10, borderColor: C.brass, borderWidth: 1.5 }}>
+        <Card style={s.partnerCard}>
           <Row gap={10}>
-            <Icon name="account-switch" size={22} color={C.brass} />
-            <Txt v="small" style={{ flex: 1 }}>
-              {t('trip.playCoolie')}
+            <PartnerLogo size={36} />
+            <Txt v="small" color={C.white} style={{ flex: 1 }}>
+              {t('trip.partnerDemo', { station: stName })}
             </Txt>
           </Row>
-          <Button title={t('trip.switchCoolie')} variant="dark" size="md" icon="human-dolly" onPress={playCoolie} />
+          <Button title={t('trip.openPartner')} variant="light" size="md" icon="swap-horizontal" onPress={openPartnerApp} />
+          {b.holdForPartner ? (
+            <Txt v="smallMed" color={PC.brassLight} center onPress={() => holdForPartner(b.id, false)} style={{ paddingVertical: 4 }}>
+              {t('trip.assignDemo')}
+            </Txt>
+          ) : null}
         </Card>
         <Card style={{ gap: 8 }}>
           <Row gap={12}>
@@ -331,6 +338,7 @@ export default function Trip() {
 }
 
 const s = StyleSheet.create({
+  partnerCard: { gap: 10, backgroundColor: PC.night, borderColor: PC.night },
   searchTop: { alignItems: 'center', gap: 8, paddingTop: 8 },
   countdown: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.amberSoft, paddingHorizontal: 12, paddingVertical: 6, borderRadius: R.pill, marginTop: 4 },
   schedHead: { alignItems: 'center', gap: 8, paddingVertical: 12 },

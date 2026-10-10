@@ -1,25 +1,25 @@
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { C, R } from '@/theme';
+import { C, PC, R } from '@/theme';
 
 import { Icon } from './Icon';
 import { Txt } from './Txt';
 
-interface Props {
+export interface TopBarProps {
   title?: string;
   subtitle?: string;
   onBack?: () => void;
   back?: boolean;
   right?: React.ReactNode;
-  tone?: 'plain' | 'red';
+  tone?: 'plain' | 'red' | 'dark';
   icon?: string;
 }
 
-export function TopBar({ title, subtitle, onBack, back = true, right, tone = 'plain', icon = 'arrow-left' }: Props) {
-  const red = tone === 'red';
+export function TopBar({ title, subtitle, onBack, back = true, right, tone = 'plain', icon = 'arrow-left' }: TopBarProps) {
+  const red = tone === 'red' || tone === 'dark';
   return (
-    <View style={[s.bar, red && { backgroundColor: C.red }]}>
+    <View style={[s.bar, tone === 'red' && { backgroundColor: C.red }, tone === 'dark' && { backgroundColor: PC.night }]}>
       {back ? (
         <Pressable
           accessibilityRole="button"

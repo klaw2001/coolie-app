@@ -4,7 +4,7 @@ import { View } from 'react-native';
 
 import { Button, Chip, Field, Screen, StickyFooter, TopBar, Txt } from '@/components/ui';
 import { useT } from '@/i18n';
-import { useApp } from '@/store/useApp';
+import { useApp, usePassenger } from '@/store/useApp';
 import { C } from '@/theme';
 import { rupee } from '@/utils/format';
 
@@ -12,7 +12,7 @@ const QUICK = [100, 200, 500, 1000, 2000];
 
 export default function Topup() {
   const t = useT();
-  const balance = useApp((s) => s.walletBalance);
+  const balance = usePassenger()?.walletBalance ?? 0;
   const createIntent = useApp((s) => s.createIntent);
   const [amount, setAmount] = useState('500');
   const n = Number(amount) || 0;

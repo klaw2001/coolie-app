@@ -1,6 +1,7 @@
+import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 
-import { C } from '@/theme';
+import { C, F, PC } from '@/theme';
 
 /** A porter balancing a suitcase on his head: red uniform, white load, brass arm badge. */
 export function Logo({ size = 56, bg = C.red, fg = C.white }: { size?: number; bg?: string | null; fg?: string }) {
@@ -18,3 +19,20 @@ export function Logo({ size = 56, bg = C.red, fg = C.white }: { size?: number; b
     </Svg>
   );
 }
+
+/** Coolie Partner mark: the porter on a dark badge with a brass "PARTNER" ribbon. */
+export function PartnerLogo({ size = 56 }: { size?: number }) {
+  return (
+    <View style={{ width: size, height: size }}>
+      <Logo size={size} bg={PC.night} fg={C.white} />
+      <View style={[ps.ribbon, { bottom: -size * 0.12, paddingHorizontal: size * 0.08 }]}>
+        <Text style={[ps.ribbonText, { fontSize: Math.max(7, size * 0.14) }]}>PARTNER</Text>
+      </View>
+    </View>
+  );
+}
+
+const ps = StyleSheet.create({
+  ribbon: { position: 'absolute', alignSelf: 'center', backgroundColor: PC.brassLight, borderRadius: 4, paddingVertical: 1 },
+  ribbonText: { fontFamily: F.extrabold, color: PC.night, letterSpacing: 0.8 },
+});

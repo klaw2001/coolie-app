@@ -3,21 +3,27 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/ui';
 import { useT } from '@/i18n';
-import { useApp } from '@/store/useApp';
-import { C, F } from '@/theme';
+import { selectCoolie, useApp } from '@/store/useApp';
+import { C, F, PC } from '@/theme';
 
+/** Coolie Partner tabs: dark bar with brass highlights, so it reads as a separate app. */
 export default function CoolieTabs() {
   const t = useT();
   const insets = useSafeAreaInsets();
-  const incoming = useApp((s) => (s.coolie?.online ? s.requests.length : 0));
+  const incoming = useApp((s) => {
+    const me = selectCoolie(s);
+    if (!me?.profile.online) return 0;
+    const booked = s.bookings.filter((b) => b.source === 'passenger' && b.status === 'searching' && b.stationCode === me.profile.stationCode && !s.declined.includes(b.id)).length;
+    return s.requests.length + booked;
+  });
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: C.red,
-        tabBarInactiveTintColor: C.muted,
+        tabBarActiveTintColor: PC.brassLight,
+        tabBarInactiveTintColor: 'rgba(255,255,255,0.55)',
         tabBarLabelStyle: { fontFamily: F.medium, fontSize: 11, lineHeight: 18 },
-        tabBarStyle: { backgroundColor: C.white, borderTopColor: C.line, height: 72 + insets.bottom, paddingTop: 6, paddingBottom: insets.bottom + 8 },
+        tabBarStyle: { backgroundColor: PC.night, borderTopColor: PC.night, height: 72 + insets.bottom, paddingTop: 6, paddingBottom: insets.bottom + 8 },
       }}>
       <Tabs.Screen
         name="duty"

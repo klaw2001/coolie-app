@@ -74,7 +74,8 @@ export interface AssignedCoolie {
   years: number;
   phone: string;
   color: string;
-  isYou: boolean;
+  /** Set when a Coolie Partner account on this phone took the job (otherwise a simulated coolie). */
+  accountId?: string;
 }
 
 export interface ChatMsg {
@@ -87,8 +88,11 @@ export interface ChatMsg {
 export interface Booking {
   id: string;
   createdAt: number;
-  /** 'passenger' = booked by you in passenger mode. 'request' = a dummy request generated for coolie mode. */
+  /** 'passenger' = booked from a passenger account on this phone. 'request' = a dummy request generated for coolie partners. */
   source: 'passenger' | 'request';
+  passengerId?: string;
+  /** The passenger chose to wait for a Coolie Partner account to accept (no automatic coolie). */
+  holdForPartner?: boolean;
   journeyType: JourneyType;
   stationCode: string;
   train: TrainInfo;
@@ -130,6 +134,8 @@ export interface PassengerProfile {
   emergencyPhone?: string;
 }
 
+export type Shift = 'morning' | 'evening' | 'night' | 'full';
+
 export interface CoolieProfile {
   name: string;
   badge: string;
@@ -137,6 +143,45 @@ export interface CoolieProfile {
   years: number;
   online: boolean;
   rating: number;
+  languages: string[];
+  shift: Shift;
+  /** Trips done before joining the app, so long-time porters don't start at zero. */
+  baseTrips: number;
+}
+
+export interface PassengerAccount {
+  id: string;
+  phone: string;
+  createdAt: number;
+  profile: PassengerProfile;
+  walletBalance: number;
+  addresses: Address[];
+  savedCards: SavedCard[];
+  savedUpi: string[];
+}
+
+export interface Kyc {
+  status: 'pending' | 'approved';
+  submittedAt: number;
+  approvedAt?: number;
+  aadhaarLast4: string;
+  bankLast4: string;
+  ifsc: string;
+  docs: string[];
+}
+
+export interface CoolieAccount {
+  id: string;
+  phone: string;
+  createdAt: number;
+  profile: CoolieProfile;
+  kyc: Kyc;
+}
+
+export interface Session {
+  app: Role;
+  accountId: string;
+  since: number;
 }
 
 export interface Address {
@@ -159,8 +204,8 @@ export interface Txn {
   method: PayMethod | 'bank';
   ref: string;
   bookingId?: string;
-  /** Which wallet this belongs to: the passenger's Coolie Wallet or the coolie's earnings. */
-  owner: Role;
+  /** Account this entry belongs to: a passenger's Coolie Wallet history or a coolie partner's earnings. */
+  ownerId: string;
 }
 
 export interface PaymentIntent {

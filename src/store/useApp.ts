@@ -3,8 +3,9 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 import { bagWeight } from '@/data/bags';
+import { buildDemo } from '@/data/demo';
 import { calcFare } from '@/data/fare';
-import { finishedCopy, genBooking, rosterCoolie, youAsCoolie } from '@/data/generate';
+import { accountCoolie, genBooking, rosterCoolie } from '@/data/generate';
 import {
   ACTIVE,
   arriveMs,
@@ -25,15 +26,19 @@ import type {
   Address,
   Booking,
   ChatMsg,
+  CoolieAccount,
   CoolieProfile,
   Draft,
   JourneyType,
+  Kyc,
   Lang,
+  PassengerAccount,
   PassengerProfile,
   PaymentIntent,
   PayMethod,
   Role,
   SavedCard,
+  Session,
   Txn,
 } from './types';
 
@@ -52,23 +57,15 @@ export function newDraft(journeyType: JourneyType = 'gate_to_train'): Draft {
 
 interface Persisted {
   lang: Lang;
-  onboarded: boolean;
-  phone: string;
-  loggedIn: boolean;
-  role: Role | null;
-  roleSince: number;
-  passenger: PassengerProfile | null;
-  coolie: CoolieProfile | null;
-  addresses: Address[];
+  onboarded: Record<Role, boolean>;
+  passengers: PassengerAccount[];
+  coolies: CoolieAccount[];
+  session: Session | null;
   bookings: Booking[];
-  walletBalance: number;
   txns: Txn[];
   intents: PaymentIntent[];
-  savedCards: SavedCard[];
-  savedUpi: string[];
   draft: Draft;
-  seededPassenger: boolean;
-  seededCoolie: boolean;
+  demoSeeded: boolean;
 }
 
 interface Ephemeral {
@@ -76,17 +73,24 @@ interface Ephemeral {
   requests: Booking[];
   nextRequestAt: number;
   declined: string[];
+  /** After logging out to hand a booking to the partner app, open that app's login next. */
+  authIntent: Role | null;
 }
 
 interface Actions {
   setLang: (l: Lang) => void;
-  finishOnboarding: () => void;
-  login: (phone: string) => void;
+  markOnboarded: (app: Role) => void;
+  setAuthIntent: (app: Role | null) => void;
+  ensureDemo: () => void;
+  loginAs: (app: Role, accountId: string) => void;
   logout: () => void;
   resetAll: () => void;
-  setRole: (r: Role) => void;
-  savePassenger: (p: PassengerProfile) => void;
-  saveCoolie: (c: Omit<CoolieProfile, 'online' | 'rating'> & Partial<Pick<CoolieProfile, 'online' | 'rating'>>) => void;
+
+  registerPassenger: (phone: string, profile: PassengerProfile) => string;
+  updatePassenger: (profile: PassengerProfile) => void;
+  registerCoolie: (phone: string, profile: Omit<CoolieProfile, 'online' | 'rating'>, kyc: Omit<Kyc, 'status' | 'submittedAt'>) => string;
+  approveCoolie: (id: string) => void;
+  updateCoolie: (patch: Partial<CoolieProfile>) => void;
 
   startDraft: (j: JourneyType) => void;
   patchDraft: (p: Partial<Draft>) => void;
@@ -104,6 +108,7 @@ interface Actions {
   switchToCash: (bookingId: string) => void;
   cancelBooking: (id: string, reason: string, by: Role) => void;
   startNow: (id: string) => void;
+  holdForPartner: (id: string, hold: boolean) => void;
   sendMessage: (id: string, from: Role, text: string) => void;
   markCashPaid: (id: string) => void;
   submitRating: (id: string, rating: NonNullable<Booking['rating']>, cashTip?: number) => void;
@@ -125,23 +130,15 @@ export type AppState = Persisted & Ephemeral & Actions;
 
 const initial: Persisted = {
   lang: 'en',
-  onboarded: false,
-  phone: '',
-  loggedIn: false,
-  role: null,
-  roleSince: 0,
-  passenger: null,
-  coolie: null,
-  addresses: [],
+  onboarded: { passenger: false, coolie: false },
+  passengers: [],
+  coolies: [],
+  session: null,
   bookings: [],
-  walletBalance: 500,
   txns: [],
   intents: [],
-  savedCards: [{ id: 'card_seed', brand: 'Visa', last4: '1111', bank: 'HDFC Bank', expiry: '08/29' }],
-  savedUpi: [],
   draft: newDraft(),
-  seededPassenger: false,
-  seededCoolie: false,
+  demoSeeded: false,
 };
 
 function tl(b: Booking, s: string, at: number): Booking['timeline'] {
@@ -152,8 +149,41 @@ function txn(p: Omit<Txn, 'id' | 'at' | 'ref'> & { ref?: string; at?: number }):
   return { id: uid('t'), at: p.at ?? Date.now(), ref: p.ref ?? txnRef(), ...p };
 }
 
-export function isLiveForCoolie(b: Booking): boolean {
-  return !!b.coolie?.isYou && (ACTIVE.includes(b.status) || (b.status === 'completed' && b.payStatus === 'cash_due'));
+// ---------- Selectors ----------
+
+export function selectPassenger(s: Pick<AppState, 'session' | 'passengers'>): PassengerAccount | null {
+  return s.session?.app === 'passenger' ? (s.passengers.find((p) => p.id === s.session!.accountId) ?? null) : null;
+}
+
+export function selectCoolie(s: Pick<AppState, 'session' | 'coolies'>): CoolieAccount | null {
+  return s.session?.app === 'coolie' ? (s.coolies.find((c) => c.id === s.session!.accountId) ?? null) : null;
+}
+
+/** Jobs this coolie account still has to finish (including collecting cash). */
+export function isLiveFor(accountId: string | undefined) {
+  return (b: Booking) =>
+    !!accountId && b.coolie?.accountId === accountId && (ACTIVE.includes(b.status) || (b.status === 'completed' && b.payStatus === 'cash_due'));
+}
+
+export function passengerBookings(bookings: Booking[], accountId: string | undefined): Booking[] {
+  return bookings.filter((b) => b.source === 'passenger' && b.passengerId === accountId && b.status !== 'payment_pending');
+}
+
+export function coolieJobs(bookings: Booking[], accountId: string | undefined): Booking[] {
+  return bookings.filter((b) => !!accountId && b.coolie?.accountId === accountId);
+}
+
+export function balanceOf(txns: Txn[], ownerId: string | undefined): number {
+  return txns.filter((t) => t.ownerId === ownerId).reduce((x, t) => x + (t.dir === 'credit' ? t.amount : -t.amount), 0);
+}
+
+export function jobEarning(b: Booking): number {
+  return b.fare.total + (b.tip?.amount ?? 0);
+}
+
+export function findAccount(s: Pick<AppState, 'passengers' | 'coolies'>, app: Role, phone: string) {
+  const list = app === 'passenger' ? s.passengers : s.coolies;
+  return list.find((a) => a.phone === phone);
 }
 
 export const useApp = create<AppState>()(
@@ -162,89 +192,28 @@ export const useApp = create<AppState>()(
       const update = (id: string, fn: (b: Booking) => Booking) =>
         set((s) => ({ bookings: s.bookings.map((b) => (b.id === id ? fn(b) : b)) }));
 
-      const myCoolieTrips = () => get().bookings.filter((b) => b.coolie?.isYou && b.status === 'completed').length;
+      const patchMe = (fn: (p: PassengerAccount) => PassengerAccount) =>
+        set((s) => ({ passengers: s.passengers.map((p) => (s.session?.app === 'passenger' && p.id === s.session.accountId ? fn(p) : p)) }));
 
-      const seedPassenger = () => {
-        const s = get();
-        if (s.seededPassenger || !s.passenger) return;
-        const now = Date.now();
-        const code = s.passenger.stationCode;
-        const me = { name: s.passenger.name, phone: s.phone };
-        const r = rng(hashStr(s.phone + 'p'));
-        const day = 86_400_000;
-        const a = genBooking({ stationCode: code, seed: hashStr(s.phone + 'a'), at: now - 2 * day - 3_600_000, journeyType: 'gate_to_train', passenger: me });
-        const b = genBooking({ stationCode: code, seed: hashStr(s.phone + 'b'), at: now - 9 * day, journeyType: 'home_to_train', passenger: me });
-        const c = genBooking({ stationCode: code, seed: hashStr(s.phone + 'c'), at: now - 5 * day, journeyType: 'train_to_exit', passenger: me });
-        const done1 = { ...finishedCopy(a, rosterCoolie(a.id, code), a.createdAt, r, { rated: true, tipped: true }), source: 'passenger' as const };
-        const done2 = { ...finishedCopy(b, rosterCoolie(b.id, code), b.createdAt, r, { rated: false, tipped: false }), source: 'passenger' as const };
-        const cancelled: Booking = {
-          ...c,
-          source: 'passenger',
-          status: 'cancelled',
-          statusAt: c.createdAt + 90_000,
-          payMethod: 'cash',
-          payStatus: 'cash_due',
-          cancel: { reason: 'reason.plans', by: 'passenger', at: c.createdAt + 90_000, refund: 0 },
-          timeline: [...c.timeline, { s: 'cancelled', at: c.createdAt + 90_000 }],
-        };
-        const seedTxns: Txn[] = [
-          txn({ amount: 500, dir: 'credit', kind: 'topup', method: 'upi', owner: 'passenger', at: now - 15 * day }),
-          ...[done1, done2]
-            .filter((x) => x.payMethod !== 'cash')
-            .map((x) => txn({ amount: x.fare.total, dir: 'debit', kind: 'booking', method: x.payMethod, bookingId: x.id, owner: 'passenger', at: x.createdAt + 20_000 })),
-        ];
-        set((st) => ({
-          bookings: [...st.bookings, done1, done2, cancelled],
-          txns: [...st.txns, ...seedTxns],
-          seededPassenger: true,
-        }));
-      };
+      const patchCoolie = (fn: (c: CoolieAccount) => CoolieAccount) =>
+        set((s) => ({ coolies: s.coolies.map((c) => (s.session?.app === 'coolie' && c.id === s.session.accountId ? fn(c) : c)) }));
 
-      const seedCoolie = () => {
-        const s = get();
-        if (s.seededCoolie || !s.coolie) return;
-        const now = Date.now();
-        const code = s.coolie.stationCode;
-        const me = youAsCoolie(s.coolie, s.phone, 0);
-        const r = rng(hashStr(s.phone + 'k'));
-        const jobs: Booking[] = [];
-        for (let d = 6; d >= 0; d--) {
-          const n = d === 0 ? 2 : 3 + Math.floor(r() * 4);
-          for (let i = 0; i < n; i++) {
-            const at = now - d * 86_400_000 - (i + 1) * 75 * 60_000 - Math.floor(r() * 20) * 60_000;
-            const g = genBooking({ stationCode: code, seed: hashStr(`${s.phone}-${d}-${i}`), at });
-            jobs.push(finishedCopy(g, me, at, r, { rated: r() < 0.8, tipped: r() < 0.35 }));
-          }
-        }
-        const earn = jobs
-          .filter((j) => j.payMethod !== 'cash')
-          .map((j) => txn({ amount: j.fare.total, dir: 'credit', kind: 'booking', method: j.payMethod, bookingId: j.id, owner: 'coolie', at: j.statusAt }));
-        const payout = txn({ amount: Math.round(earn.slice(0, Math.floor(earn.length / 2)).reduce((x, t) => x + t.amount, 0)), dir: 'debit', kind: 'withdraw', method: 'bank', owner: 'coolie', at: now - 3 * 86_400_000 });
-        set((st) => ({
-          bookings: [...st.bookings, ...jobs],
-          txns: [...st.txns, ...earn, ...(payout.amount > 0 ? [payout] : [])],
-          seededCoolie: true,
-        }));
-      };
+      const completedFor = (accountId: string) => get().bookings.filter((b) => b.coolie?.accountId === accountId && b.status === 'completed').length;
 
-      const assign = (b: Booking, now: number, coolieMode: 'auto' | 'manual'): Booking => {
-        const s = get();
+      const assign = (b: Booking, now: number, by: CoolieAccount | null): Booking => {
         const st = station(b.stationCode);
         const r = rng(hashStr(b.id));
         const start =
           b.journeyType === 'home_to_train'
             ? offsetMeters(b.meet.coord, (r() - 0.5) * 3000, (r() - 0.5) * 3000)
             : offsetMeters(st.coord, -260 + r() * 80, 180 - r() * 60);
-        const coolie =
-          coolieMode === 'manual' && s.coolie
-            ? youAsCoolie(s.coolie, s.phone, myCoolieTrips())
-            : rosterCoolie(b.id, b.stationCode);
         return {
           ...b,
           status: 'accepted',
           statusAt: now,
-          mode: coolieMode,
-          coolie,
+          mode: by ? 'manual' : 'auto',
+          holdForPartner: false,
+          coolie: by ? accountCoolie(by, completedFor(by.id)) : rosterCoolie(b.id, b.stationCode),
           coolieStart: start,
           arriveMs: arriveMs(b.journeyType),
           timeline: tl(b, 'accepted', now),
@@ -268,9 +237,9 @@ export const useApp = create<AppState>()(
         return { ...b, stage: b.stage + 1, stageAt: now };
       };
 
-      const creditCoolie = (b: Booking) => {
-        if (!b.coolie?.isYou || b.payMethod === 'cash') return [] as Txn[];
-        return [txn({ amount: b.fare.total, dir: 'credit', kind: 'booking', method: b.payMethod, bookingId: b.id, owner: 'coolie' })];
+      const creditCoolie = (b: Booking): Txn[] => {
+        if (!b.coolie?.accountId || b.payMethod === 'cash') return [];
+        return [txn({ amount: b.fare.total, dir: 'credit', kind: 'booking', method: b.payMethod, bookingId: b.id, ownerId: b.coolie.accountId })];
       };
 
       return {
@@ -279,37 +248,79 @@ export const useApp = create<AppState>()(
         requests: [],
         nextRequestAt: 0,
         declined: [],
+        authIntent: null,
 
         setLang: (lang) => set({ lang }),
-        finishOnboarding: () => set({ onboarded: true }),
-        login: (phone) => set({ phone, loggedIn: true }),
-        logout: () => set({ loggedIn: false, requests: [] }),
-        resetAll: () => set({ ...initial, lang: get().lang, onboarded: true, requests: [], declined: [], draft: newDraft() }),
-        setRole: (role) => set({ role, roleSince: Date.now(), requests: [] }),
+        markOnboarded: (app) => set((s) => ({ onboarded: { ...s.onboarded, [app]: true } })),
+        setAuthIntent: (authIntent) => set({ authIntent }),
 
-        savePassenger: (p) => {
-          set({ passenger: p });
-          seedPassenger();
+        ensureDemo: () => {
+          if (get().demoSeeded) return;
+          const demo = buildDemo();
+          set((s) => ({
+            passengers: [...demo.passengers, ...s.passengers.filter((p) => !demo.passengers.some((d) => d.id === p.id))],
+            coolies: [...demo.coolies, ...s.coolies.filter((c) => !demo.coolies.some((d) => d.id === c.id))],
+            bookings: [...s.bookings, ...demo.bookings],
+            txns: [...demo.txns, ...s.txns],
+            demoSeeded: true,
+          }));
         },
-        saveCoolie: (c) => {
-          const prev = get().coolie;
-          set({ coolie: { online: prev?.online ?? false, rating: prev?.rating ?? 4.8, ...c } });
-          seedCoolie();
+
+        loginAs: (app, accountId) =>
+          set({
+            session: { app, accountId, since: Date.now() },
+            draft: newDraft(),
+            requests: [],
+            declined: [],
+            nextRequestAt: Date.now() + 3500,
+            authIntent: null,
+          }),
+
+        logout: () => set({ session: null, requests: [] }),
+
+        resetAll: () => {
+          set({ ...initial, lang: get().lang, onboarded: get().onboarded, requests: [], declined: [], authIntent: null });
+          get().ensureDemo();
         },
+
+        registerPassenger: (phone, profile) => {
+          const id = uid('p_');
+          const acct: PassengerAccount = { id, phone, createdAt: Date.now(), profile, walletBalance: 0, addresses: [], savedCards: [], savedUpi: [] };
+          set((s) => ({ passengers: [...s.passengers, acct] }));
+          return id;
+        },
+        updatePassenger: (profile) => patchMe((p) => ({ ...p, profile })),
+
+        registerCoolie: (phone, profile, kyc) => {
+          const id = uid('k_');
+          const acct: CoolieAccount = {
+            id,
+            phone,
+            createdAt: Date.now(),
+            profile: { ...profile, online: false, rating: 5 },
+            kyc: { ...kyc, status: 'pending', submittedAt: Date.now() },
+          };
+          set((s) => ({ coolies: [...s.coolies, acct] }));
+          return id;
+        },
+        approveCoolie: (id) =>
+          set((s) => ({ coolies: s.coolies.map((c) => (c.id === id ? { ...c, kyc: { ...c.kyc, status: 'approved', approvedAt: Date.now() } } : c)) })),
+        updateCoolie: (patch) => patchCoolie((c) => ({ ...c, profile: { ...c.profile, ...patch } })),
 
         startDraft: (j) => set({ draft: newDraft(j) }),
         patchDraft: (p) => set((s) => ({ draft: { ...s.draft, ...p } })),
         addAddress: (a) => {
           const addr = { ...a, id: uid('a') };
-          set((s) => ({ addresses: [addr, ...s.addresses] }));
+          patchMe((p) => ({ ...p, addresses: [addr, ...p.addresses] }));
           return addr;
         },
-        removeAddress: (id) => set((s) => ({ addresses: s.addresses.filter((a) => a.id !== id) })),
+        removeAddress: (id) => patchMe((p) => ({ ...p, addresses: p.addresses.filter((a) => a.id !== id) })),
 
         placeBooking: () => {
           const s = get();
+          const me = selectPassenger(s);
           const d = s.draft;
-          if (!d.train || !d.meet || !d.drop) return null;
+          if (!me || !d.train || !d.meet || !d.drop) return null;
           const now = Date.now();
           const weight = Math.max(1, bagWeight(d.bags) + d.weightAdjust);
           const fare = calcFare(weight, d.coolies, d.distanceKm, d.addons);
@@ -320,6 +331,7 @@ export const useApp = create<AppState>()(
             id: bookingCode(),
             createdAt: now,
             source: 'passenger',
+            passengerId: me.id,
             journeyType: d.journeyType,
             stationCode: d.train.stationCode,
             train: d.train,
@@ -340,8 +352,8 @@ export const useApp = create<AppState>()(
             searchFrom: now,
             timeline: [{ s: 'created', at: now }, ...(cash ? [{ s: later ? 'scheduled' : 'searching', at: now }] : [])],
             messages: [],
-            passengerName: s.passenger?.name ?? 'Passenger',
-            passengerPhone: s.phone,
+            passengerName: me.profile.name,
+            passengerPhone: me.phone,
           };
           set((st) => ({ bookings: [b, ...st.bookings] }));
           return b;
@@ -357,11 +369,12 @@ export const useApp = create<AppState>()(
 
         finalizeIntent: (id) => {
           const s = get();
+          const me = selectPassenger(s);
           const it = s.intents.find((i) => i.id === id);
-          if (!it || it.status !== 'created' || !it.method) return it;
+          if (!me || !it || it.status !== 'created' || !it.method) return it;
           let ok = it.outcome === 'success';
           let failReason = it.failReason;
-          if (ok && it.method === 'wallet' && s.walletBalance < it.amount) {
+          if (ok && it.method === 'wallet' && me.walletBalance < it.amount) {
             ok = false;
             failReason = 'fail.balance';
           }
@@ -371,14 +384,14 @@ export const useApp = create<AppState>()(
           const patch: Partial<AppState> = { intents: s.intents.map((i) => (i.id === id ? done : i)) };
           if (ok) {
             const method = it.method as PayMethod;
-            let balance = s.walletBalance;
+            let balance = me.walletBalance;
             if (method === 'wallet') balance -= it.amount;
             const newTxns: Txn[] = [];
             if (it.purpose === 'topup') {
               balance += it.amount;
-              newTxns.push(txn({ amount: it.amount, dir: 'credit', kind: 'topup', method, owner: 'passenger', ref }));
+              newTxns.push(txn({ amount: it.amount, dir: 'credit', kind: 'topup', method, ownerId: me.id, ref }));
             } else {
-              newTxns.push(txn({ amount: it.amount, dir: 'debit', kind: it.purpose, method, bookingId: it.refId, owner: 'passenger', ref }));
+              newTxns.push(txn({ amount: it.amount, dir: 'debit', kind: it.purpose, method, bookingId: it.refId, ownerId: me.id, ref }));
             }
             let bookings = s.bookings;
             if (it.purpose === 'booking' && it.refId) {
@@ -399,26 +412,26 @@ export const useApp = create<AppState>()(
             }
             if (it.purpose === 'tip' && it.refId) {
               const b = bookings.find((x) => x.id === it.refId);
-              if (b?.coolie?.isYou) {
-                newTxns.push(txn({ amount: it.amount, dir: 'credit', kind: 'tip', method, bookingId: b.id, owner: 'coolie', ref }));
+              if (b?.coolie?.accountId) {
+                newTxns.push(txn({ amount: it.amount, dir: 'credit', kind: 'tip', method, bookingId: b.id, ownerId: b.coolie.accountId, ref }));
               }
               bookings = bookings.map((x) => (x.id === it.refId ? { ...x, tip: { amount: it.amount, method, status: 'paid' } } : x));
             }
-            Object.assign(patch, { walletBalance: balance, txns: [...newTxns, ...s.txns], bookings });
+            Object.assign(patch, {
+              passengers: s.passengers.map((p) => (p.id === me.id ? { ...p, walletBalance: balance } : p)),
+              txns: [...newTxns, ...s.txns],
+              bookings,
+            });
           }
           set(patch);
           return done;
         },
 
         saveCard: (c) =>
-          set((s) =>
-            s.savedCards.some((x) => x.last4 === c.last4 && x.brand === c.brand)
-              ? s
-              : { savedCards: [...s.savedCards, { ...c, id: uid('card') }] },
-          ),
-        removeCard: (id) => set((s) => ({ savedCards: s.savedCards.filter((c) => c.id !== id) })),
-        saveUpi: (vpa) => set((s) => (s.savedUpi.includes(vpa) ? s : { savedUpi: [...s.savedUpi, vpa] })),
-        removeUpi: (vpa) => set((s) => ({ savedUpi: s.savedUpi.filter((v) => v !== vpa) })),
+          patchMe((p) => (p.savedCards.some((x) => x.last4 === c.last4 && x.brand === c.brand) ? p : { ...p, savedCards: [...p.savedCards, { ...c, id: uid('card') }] })),
+        removeCard: (id) => patchMe((p) => ({ ...p, savedCards: p.savedCards.filter((c) => c.id !== id) })),
+        saveUpi: (vpa) => patchMe((p) => (p.savedUpi.includes(vpa) ? p : { ...p, savedUpi: [...p.savedUpi, vpa] })),
+        removeUpi: (vpa) => patchMe((p) => ({ ...p, savedUpi: p.savedUpi.filter((v) => v !== vpa) })),
 
         switchToCash: (id) => {
           const now = Date.now();
@@ -455,20 +468,24 @@ export const useApp = create<AppState>()(
                   }
                 : x,
             ),
-            walletBalance: s.walletBalance + refund,
-            txns: refund
-              ? [txn({ amount: refund, dir: 'credit', kind: 'refund', method: 'wallet', bookingId: id, owner: 'passenger' }), ...s.txns]
-              : s.txns,
+            passengers: refund ? s.passengers.map((p) => (p.id === b.passengerId ? { ...p, walletBalance: p.walletBalance + refund } : p)) : s.passengers,
+            txns:
+              refund && b.passengerId
+                ? [txn({ amount: refund, dir: 'credit', kind: 'refund', method: 'wallet', bookingId: id, ownerId: b.passengerId }), ...s.txns]
+                : s.txns,
           });
         },
 
         startNow: (id) => {
           const now = Date.now();
           update(id, (b) =>
-            b.status === 'scheduled'
-              ? { ...b, status: 'searching', statusAt: now, searchFrom: now, timeline: tl(b, 'searching', now) }
-              : b,
+            b.status === 'scheduled' ? { ...b, status: 'searching', statusAt: now, searchFrom: now, timeline: tl(b, 'searching', now) } : b,
           );
+        },
+
+        holdForPartner: (id, hold) => {
+          const now = Date.now();
+          update(id, (b) => ({ ...b, holdForPartner: hold, searchFrom: hold ? b.searchFrom : now - AUTO_ACCEPT_MS }));
         },
 
         sendMessage: (id, from, text) => {
@@ -478,7 +495,7 @@ export const useApp = create<AppState>()(
 
         markCashPaid: (id) => {
           const now = Date.now();
-          update(id, (b) => ({ ...b, payStatus: 'cash_paid', timeline: tl(b, 'cash', now) }));
+          update(id, (b) => (b.payStatus === 'cash_due' ? { ...b, payStatus: 'cash_paid', timeline: tl(b, 'cash', now) } : b));
         },
 
         submitRating: (id, rating, cashTip) => {
@@ -491,35 +508,33 @@ export const useApp = create<AppState>()(
           }));
         },
 
-        // ---------- Coolie mode ----------
+        // ---------- Coolie Partner ----------
 
-        setOnline: (on) =>
-          set((s) => ({
-            coolie: s.coolie ? { ...s.coolie, online: on } : s.coolie,
-            nextRequestAt: on ? Date.now() + 3500 : s.nextRequestAt,
-            requests: on ? s.requests : [],
-          })),
+        setOnline: (on) => {
+          patchCoolie((c) => ({ ...c, profile: { ...c.profile, online: on } }));
+          set((s) => ({ nextRequestAt: on ? Date.now() + 3500 : s.nextRequestAt, requests: on ? s.requests : [] }));
+        },
 
         acceptRequest: (id) => {
           const s = get();
+          const me = selectCoolie(s);
           const now = Date.now();
-          if (s.bookings.some(isLiveForCoolie)) return false;
+          if (!me || s.bookings.some(isLiveFor(me.id))) return false;
           const req = s.requests.find((r) => r.id === id);
           if (req) {
-            const b = assign({ ...req, expiresAt: undefined }, now, 'manual');
+            const b = assign({ ...req, expiresAt: undefined }, now, me);
             set({ bookings: [b, ...s.bookings], requests: s.requests.filter((r) => r.id !== id) });
             return true;
           }
-          const own = s.bookings.find((b) => b.id === id && b.status === 'searching');
-          if (own) {
-            update(id, (b) => assign(b, now, 'manual'));
+          const booked = s.bookings.find((b) => b.id === id && b.status === 'searching');
+          if (booked) {
+            update(id, (b) => assign(b, now, me));
             return true;
           }
           return false;
         },
 
-        declineRequest: (id) =>
-          set((s) => ({ requests: s.requests.filter((r) => r.id !== id), declined: [...s.declined, id] })),
+        declineRequest: (id) => set((s) => ({ requests: s.requests.filter((r) => r.id !== id), declined: [...s.declined, id] })),
 
         coolieArrived: (id) => {
           const now = Date.now();
@@ -545,7 +560,7 @@ export const useApp = create<AppState>()(
 
         collectCash: (id) => {
           const now = Date.now();
-          update(id, (b) => ({ ...b, payStatus: 'cash_paid', timeline: tl(b, 'cash', now) }));
+          update(id, (b) => (b.payStatus === 'cash_due' ? { ...b, payStatus: 'cash_paid', timeline: tl(b, 'cash', now) } : b));
         },
 
         releaseJob: (id) => {
@@ -571,9 +586,11 @@ export const useApp = create<AppState>()(
 
         withdraw: () => {
           const s = get();
-          const bal = s.txns.filter((t) => t.owner === 'coolie').reduce((x, t) => x + (t.dir === 'credit' ? t.amount : -t.amount), 0);
+          const me = selectCoolie(s);
+          if (!me) return 0;
+          const bal = balanceOf(s.txns, me.id);
           if (bal <= 0) return 0;
-          set({ txns: [txn({ amount: bal, dir: 'debit', kind: 'withdraw', method: 'bank', owner: 'coolie' }), ...s.txns] });
+          set({ txns: [txn({ amount: bal, dir: 'debit', kind: 'withdraw', method: 'bank', ownerId: me.id }), ...s.txns] });
           return bal;
         },
 
@@ -581,15 +598,18 @@ export const useApp = create<AppState>()(
 
         tick: (now) => {
           const s = get();
+          const me = selectCoolie(s);
           let changed = false;
-          const newCoolieTxns: Txn[] = [];
+          const newTxns: Txn[] = [];
           const bookings = s.bookings.map((b0) => {
             let b = b0;
             if (b.status === 'scheduled' && b.scheduledAt && now >= b.scheduledAt - SCHEDULE_LEAD_MS) {
               b = { ...b, status: 'searching', statusAt: now, searchFrom: now, timeline: tl(b, 'searching', now) };
-            } else if (b.status === 'searching' && b.source === 'passenger' && s.role !== 'coolie') {
-              const from = Math.max(b.searchFrom ?? b.statusAt, s.roleSince);
-              if (now - from >= AUTO_ACCEPT_MS) b = assign(b, now, 'auto');
+            } else if (b.status === 'searching' && b.source === 'passenger') {
+              // A simulated coolie only steps in while the passenger who booked is watching and hasn't chosen to wait for a partner.
+              const watching = s.session?.app === 'passenger' && s.session.accountId === b.passengerId;
+              const from = Math.max(b.searchFrom ?? b.statusAt, s.session?.since ?? 0);
+              if (watching && !b.holdForPartner && now - from >= AUTO_ACCEPT_MS) b = assign(b, now, null);
             } else if (b.mode === 'auto') {
               if (b.status === 'accepted' && now - b.statusAt >= (b.arriveMs ?? 15_000)) {
                 b = { ...b, status: 'arrived', statusAt: now, timeline: tl(b, 'arrived', now) };
@@ -609,7 +629,7 @@ export const useApp = create<AppState>()(
                 b = { ...b, messages: [...b.messages, { id: uid('m'), from: 'coolie', text, at: now }] };
               }
             }
-            if (b.source === 'request' && b.coolie?.isYou && ACTIVE.includes(b.status)) {
+            if (b.source === 'request' && b.coolie?.accountId && ACTIVE.includes(b.status)) {
               const last = b.messages[b.messages.length - 1];
               if (last && last.from === 'coolie' && now - last.at >= 2500) {
                 const n = b.messages.filter((m) => m.from === 'passenger').length;
@@ -620,22 +640,22 @@ export const useApp = create<AppState>()(
             }
             if (b !== b0) {
               changed = true;
-              if (b.status === 'completed' && b0.status !== 'completed') newCoolieTxns.push(...creditCoolie(b));
+              if (b.status === 'completed' && b0.status !== 'completed') newTxns.push(...creditCoolie(b));
             }
             return b;
           });
 
           let requests = s.requests;
           let nextRequestAt = s.nextRequestAt;
-          if (s.role === 'coolie' && s.coolie?.online) {
+          if (me?.profile.online) {
             const alive = requests.filter((r) => (r.expiresAt ?? 0) > now);
             if (alive.length !== requests.length) {
               requests = alive;
               changed = true;
             }
-            const busy = bookings.some(isLiveForCoolie);
+            const busy = bookings.some(isLiveFor(me.id));
             if (!busy && now >= nextRequestAt && requests.length < 2) {
-              const g = genBooking({ stationCode: s.coolie.stationCode, seed: Math.floor(Math.random() * 1e9), at: now });
+              const g = genBooking({ stationCode: me.profile.stationCode, seed: Math.floor(Math.random() * 1e9), at: now });
               requests = [...requests, { ...g, expiresAt: now + REQUEST_TTL_MS }];
               nextRequestAt = now + REQUEST_GAP_MS + Math.floor(Math.random() * 8000);
               changed = true;
@@ -645,55 +665,38 @@ export const useApp = create<AppState>()(
             changed = true;
           }
 
-          if (changed) set({ bookings, requests, nextRequestAt, txns: newCoolieTxns.length ? [...newCoolieTxns, ...s.txns] : s.txns });
+          if (changed) set({ bookings, requests, nextRequestAt, txns: newTxns.length ? [...newTxns, ...s.txns] : s.txns });
         },
       };
     },
     {
-      name: 'coolie-app-v1',
-      version: 1,
+      name: 'coolie-app-v2',
+      version: 2,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (s): Persisted => ({
         lang: s.lang,
         onboarded: s.onboarded,
-        phone: s.phone,
-        loggedIn: s.loggedIn,
-        role: s.role,
-        roleSince: s.roleSince,
-        passenger: s.passenger,
-        coolie: s.coolie,
-        addresses: s.addresses,
+        passengers: s.passengers,
+        coolies: s.coolies,
+        session: s.session,
         bookings: s.bookings,
-        walletBalance: s.walletBalance,
         txns: s.txns,
         intents: s.intents.slice(0, 30),
-        savedCards: s.savedCards,
-        savedUpi: s.savedUpi,
         draft: s.draft,
-        seededPassenger: s.seededPassenger,
-        seededCoolie: s.seededCoolie,
+        demoSeeded: s.demoSeeded,
       }),
       onRehydrateStorage: () => () => {
+        useApp.getState().ensureDemo();
         useApp.setState({ hydrated: true });
       },
     },
   ),
 );
 
-// ---------- Selectors ----------
-
-export function passengerBookings(bookings: Booking[]): Booking[] {
-  return bookings.filter((b) => b.source === 'passenger' && b.status !== 'payment_pending');
+export function usePassenger() {
+  return useApp(selectPassenger);
 }
 
-export function coolieJobs(bookings: Booking[]): Booking[] {
-  return bookings.filter((b) => b.coolie?.isYou);
-}
-
-export function coolieBalance(txns: Txn[]): number {
-  return txns.filter((t) => t.owner === 'coolie').reduce((x, t) => x + (t.dir === 'credit' ? t.amount : -t.amount), 0);
-}
-
-export function jobEarning(b: Booking): number {
-  return b.fare.total + (b.tip?.amount ?? 0);
+export function useCoolie() {
+  return useApp(selectCoolie);
 }

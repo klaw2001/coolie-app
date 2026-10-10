@@ -36,6 +36,11 @@ export function fmtDate(ms: number, lang: Lang = 'en'): string {
   return `${DAYS[lang][d.getDay()]}, ${d.getDate()} ${MONTHS[lang][d.getMonth()]}`;
 }
 
+export function fmtMonthYear(ms: number, lang: Lang = 'en'): string {
+  const d = new Date(ms);
+  return `${MONTHS[lang][d.getMonth()]} ${d.getFullYear()}`;
+}
+
 export function fmtDateTime(ms: number, lang: Lang = 'en'): string {
   return `${fmtDate(ms, lang)} · ${fmtTime(ms, lang)}`;
 }

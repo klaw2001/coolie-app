@@ -22,7 +22,7 @@ import {
   type PnrResult,
 } from '@/data/trains';
 import { loc, useLang, useT } from '@/i18n';
-import { useApp } from '@/store/useApp';
+import { useApp, usePassenger } from '@/store/useApp';
 import type { TrainInfo } from '@/store/types';
 import { C, R } from '@/theme';
 import { atTime, dayLabel, startOfDay } from '@/utils/format';
@@ -31,7 +31,7 @@ export default function TrainStep() {
   const t = useT();
   const lang = useLang();
   const draft = useApp((s) => s.draft);
-  const home = useApp((s) => s.passenger?.stationCode ?? 'CSMT');
+  const home = usePassenger()?.profile.stationCode ?? 'CSMT';
   const patchDraft = useApp((s) => s.patchDraft);
   const [now] = useState(() => Date.now());
   const dir = direction(draft.journeyType);

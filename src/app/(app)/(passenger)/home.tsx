@@ -14,7 +14,7 @@ import { SLABS, EXTRA_PER_20KG } from '@/data/fare';
 import { ACTIVE, JOURNEYS } from '@/data/journey';
 import { station } from '@/data/stations';
 import { loc, useLang, useT } from '@/i18n';
-import { passengerBookings, useApp } from '@/store/useApp';
+import { passengerBookings, useApp, usePassenger } from '@/store/useApp';
 import type { JourneyType } from '@/store/types';
 import { C, R, shadow } from '@/theme';
 import { fmtDateTime } from '@/utils/format';
@@ -23,15 +23,16 @@ export default function Home() {
   const t = useT();
   const lang = useLang();
   const insets = useSafeAreaInsets();
-  const passenger = useApp((s) => s.passenger);
+  const passenger = usePassenger();
   const bookings = useApp((s) => s.bookings);
   const startDraft = useApp((s) => s.startDraft);
-  const savePassenger = useApp((s) => s.savePassenger);
+  const updatePassenger = useApp((s) => s.updatePassenger);
   const [picker, setPicker] = useState(false);
 
   if (!passenger) return null;
-  const st = station(passenger.stationCode);
-  const mine = passengerBookings(bookings);
+  const profile = passenger.profile;
+  const st = station(profile.stationCode);
+  const mine = passengerBookings(bookings, passenger.id);
   const active = mine.find((b) => ACTIVE.includes(b.status));
   const upcoming = mine.filter((b) => b.status === 'scheduled').sort((a, b) => (a.scheduledAt ?? 0) - (b.scheduledAt ?? 0))[0];
 
@@ -55,12 +56,12 @@ export default function Home() {
             <Row gap={10}>
               <LangToggle light />
               <Pressable onPress={() => router.push('/profile')} accessibilityLabel={t('tab.profile')}>
-                <Avatar name={passenger.name} size={36} color={C.redDeep} />
+                <Avatar name={profile.name} size={36} color={C.redDeep} />
               </Pressable>
             </Row>
           </View>
           <Txt v="h1" color={C.white} style={{ marginTop: 18 }}>
-            {t('home.greeting', { name: passenger.name.split(' ')[0] })}
+            {t('home.greeting', { name: profile.name.split(' ')[0] })}
           </Txt>
           <Txt v="body" color="rgba(255,255,255,0.85)">
             {t('home.subtitle')}
@@ -212,7 +213,7 @@ export default function Home() {
           </Txt>
         </View>
       </ScrollView>
-      <StationPicker visible={picker} value={st.code} onClose={() => setPicker(false)} onPick={(code) => savePassenger({ ...passenger, stationCode: code })} />
+      <StationPicker visible={picker} value={st.code} onClose={() => setPicker(false)} onPick={(code) => updatePassenger({ ...profile, stationCode: code })} />
     </View>
   );
 }

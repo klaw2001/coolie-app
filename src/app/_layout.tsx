@@ -26,14 +26,14 @@ export default function RootLayout() {
     Poppins_800ExtraBold,
   });
   const hydrated = useApp((s) => s.hydrated);
-  const loggedIn = useApp((s) => s.loggedIn);
+  const signedIn = useApp((s) => !!s.session);
   const ready = (fontsLoaded || !!fontError) && hydrated;
 
   useEffect(() => {
     if (ready) SplashScreen.hideAsync().catch(() => {});
   }, [ready]);
 
-  useSimulation(ready && loggedIn);
+  useSimulation(ready);
 
   if (!ready) return null;
 
@@ -42,10 +42,10 @@ export default function RootLayout() {
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg }, animation: 'slide_from_right' }}>
         <Stack.Screen name="index" options={{ animation: 'none' }} />
-        <Stack.Protected guard={!loggedIn}>
+        <Stack.Protected guard={!signedIn}>
           <Stack.Screen name="(auth)" />
         </Stack.Protected>
-        <Stack.Protected guard={loggedIn}>
+        <Stack.Protected guard={signedIn}>
           <Stack.Screen name="(app)" options={{ animation: 'fade' }} />
         </Stack.Protected>
       </Stack>

@@ -2,16 +2,17 @@ import { router } from 'expo-router';
 
 import { Button, Card, Empty, Icon, ListRow, Screen, StickyFooter, TopBar } from '@/components/ui';
 import { loc, useLang, useT } from '@/i18n';
-import { useApp } from '@/store/useApp';
+import { useApp, usePassenger } from '@/store/useApp';
 import { C } from '@/theme';
 import { confirmDialog } from '@/utils/dialog';
 
 export default function Addresses() {
   const t = useT();
   const lang = useLang();
-  const addresses = useApp((s) => s.addresses);
+  const me = usePassenger();
+  const addresses = me?.addresses ?? [];
   const remove = useApp((s) => s.removeAddress);
-  const stationCode = useApp((s) => s.passenger?.stationCode ?? 'CSMT');
+  const stationCode = me?.profile.stationCode ?? 'CSMT';
 
   const add = () => router.push({ pathname: '/book/map-pick', params: { station: stationCode, standalone: '1' } });
 

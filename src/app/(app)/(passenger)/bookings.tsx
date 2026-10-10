@@ -5,14 +5,15 @@ import { BookingCard } from '@/components/BookingCard';
 import { Empty, Screen, Segmented, TopBar } from '@/components/ui';
 import { ACTIVE } from '@/data/journey';
 import { useT } from '@/i18n';
-import { passengerBookings, useApp } from '@/store/useApp';
+import { passengerBookings, useApp, usePassenger } from '@/store/useApp';
 
 export default function Bookings() {
   const t = useT();
   const bookings = useApp((s) => s.bookings);
+  const me = usePassenger();
   const startDraft = useApp((s) => s.startDraft);
   const [tab, setTab] = useState<'active' | 'past'>('active');
-  const mine = passengerBookings(bookings);
+  const mine = passengerBookings(bookings, me?.id);
   const active = mine.filter((b) => ACTIVE.includes(b.status) || b.status === 'scheduled').sort((a, b) => b.createdAt - a.createdAt);
   const past = mine.filter((b) => b.status === 'completed' || b.status === 'cancelled').sort((a, b) => b.createdAt - a.createdAt);
   const list = tab === 'active' ? active : past;

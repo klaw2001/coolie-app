@@ -4,7 +4,7 @@ import { ActivityIndicator, View } from 'react-native';
 
 import { Banner, Button, Card, Field, Icon, Row, Screen, StickyFooter, TopBar, Txt } from '@/components/ui';
 import { useT } from '@/i18n';
-import { useApp } from '@/store/useApp';
+import { useApp, usePassenger } from '@/store/useApp';
 import { C } from '@/theme';
 import { mmss, rupee } from '@/utils/format';
 import { validVpa } from '@/utils/payment';
@@ -13,7 +13,7 @@ export default function UpiId() {
   const t = useT();
   const { id, vpa: preset } = useLocalSearchParams<{ id: string; vpa?: string }>();
   const intent = useApp((s) => s.intents.find((i) => i.id === id));
-  const name = useApp((s) => s.passenger?.name ?? 'Account holder');
+  const name = usePassenger()?.profile.name ?? 'Account holder';
   const setOutcome = useApp((s) => s.setIntentOutcome);
   const saveUpi = useApp((s) => s.saveUpi);
   const [vpa, setVpa] = useState(preset ?? '');

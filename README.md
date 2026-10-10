@@ -18,27 +18,50 @@ npx expo start
 
 Scan the QR code with **Expo Go** (Android) or the Camera app (iOS). Your phone and computer need to be on the same Wi-Fi. If they aren't, use `npx expo start --tunnel`.
 
+## Two apps, two logins
+
+The first screen is a gateway with two doors:
+
+- **I'm a passenger**: the red-and-white **Coolie** app for booking a coolie.
+- **I'm a coolie**: the dark **Coolie Partner** app for porters, with its own branding, welcome screens, login, registration and screens.
+
+Each side has its own accounts, so a passenger never sees coolie screens and vice versa. Logging out returns you to the gateway.
+
+### Demo accounts
+
+Both login screens have a one-tap demo account card. The OTP fills itself in, as if read from SMS.
+
+| App | Account | History already loaded |
+| --- | --- | --- |
+| Passenger | **Ananya Sharma**, +91 98765 01234, Mumbai CSMT | Past trips (one carried by Ramesh), an unrated trip, a cancelled trip with a wallet refund, a trip scheduled for tomorrow, wallet balance, saved card and UPI ID |
+| Coolie Partner | **Ramesh Yadav**, +91 98200 41177, badge **CSMT-472** | A week of jobs and earnings, payouts, ratings, verified KYC |
+
+New numbers go through sign-up instead. A passenger fills in a short profile. A coolie goes through **partner registration** (personal details, station and badge number, shift, document uploads, Aadhaar and bank details, consent), then a verification screen that approves the application in a few seconds.
+
+## Investor demo script (one phone)
+
+Bookings are shared on the phone, so a booking made by Ananya reaches Ramesh after you switch logins.
+
+1. Gateway → **I'm a passenger** → tap **Ananya Sharma**. Show the home screen, bookings history and wallet.
+2. Book **Station Gate → Train**: tap demo PNR `2451873690` (Mumbai CSMT) → *Main Entrance (Gate 1)* → add bags → *Now* → *Cash after trip* → **Book**.
+3. On "Finding a coolie", tap **Open Coolie Partner app**. This holds the booking for a partner and opens the partner login.
+4. Tap **Ramesh Yadav** → **Go online**. Ananya's booking appears as **Booked just now**. Accept it, then *I've arrived* → enter the OTP shown in the hint → mark each step → *Complete delivery* → *Collect cash*. Show Earnings (weekly chart and bonus) and Profile (badge, verified documents).
+5. Profile → **Log out** → **I'm a passenger** → **Ananya Sharma**. The trip shows as completed by Ramesh, ready to rate and tip.
+
+To show the passenger side alone, just wait on "Finding a coolie": while the passenger is logged in, a simulated coolie accepts after about 10 seconds and the whole trip plays out automatically.
+
+Partner bookings are matched by station. The demo partner works at **Mumbai CSMT**, so use a CSMT PNR (`2451873690` or `8213650479`) or pick CSMT manually for step 2.
+
 ## Demo cheat-sheet
 
 | Where | What to enter |
 | --- | --- |
-| Login OTP | `1234` (any 10-digit mobile number starting 6–9) |
+| Login OTP | `1234` (demo accounts fill it automatically) |
 | PNR | Tap a demo PNR (e.g. `2451873690`). Any 10-digit number starting 1–8 also works. |
 | UPI app PIN | Any 6 digits succeed. `000000` fails. |
 | UPI ID | Any `name@bank` succeeds. `fail@upi` is declined. |
 | Card | `4111 1111 1111 1111` succeeds. `4000 0000 0000 0002` is declined. Card OTP is `123456`. |
 | Coolie OTP | Shown on the passenger's trip screen (and as a hint in coolie mode). |
-
-## Two roles in one app
-
-After login you pick **I'm travelling** (passenger) or **I'm a coolie**. You can switch any time from Profile.
-
-**Passenger and coolie are linked.** When you book as a passenger:
-
-- If you do nothing, a dummy coolie accepts after about **10 s**, and the trip plays out on its own: coolie walks to you, arrives, OTP, station steps, delivered.
-- Or tap **Switch to Coolie mode** on the "Finding a coolie" screen. Your own booking shows up at the top of the Duty tab (gold border). Accept it and drive the trip yourself: *I've arrived* → enter OTP → mark each step → *Complete delivery* → collect cash. Switch back to see the passenger side updated.
-
-In coolie mode, dummy requests from other passengers also keep arriving while you're online (each expires after 30 s).
 
 ## Features
 
@@ -55,12 +78,13 @@ In coolie mode, dummy requests from other passengers also keep arriving while yo
 - Rate the coolie, add tags and a **tip** (online or cash), receipt, timeline, *Book again*
 - Bookings (active and past), Wallet (balance, top-up, saved methods, history), Profile, saved addresses, rate card, help/FAQ
 
-**Coolie**
+**Coolie Partner**
+- Partner registration with simulated KYC (document uploads, Aadhaar, bank account) and a verification/approval screen
 - Online/offline duty toggle, today's earnings, trips and rating
-- Incoming requests with a countdown, accept/decline
-- Job screen: map/station view, OTP verification, step-by-step progress, cash collection
-- Jobs history, 7-day earnings chart, cash vs online, tips, withdraw to bank
-- Profile with licensed-porter badge, documents and language
+- Incoming requests: real bookings from passenger accounts at the partner's station ("Booked just now"), plus simulated requests that arrive every ~20 s while online and expire after 30 s
+- Job screen: map/station view, OTP verification, step-by-step progress, cash collection, chat and call with the passenger
+- Jobs history, weekly bonus tracker, 7-day earnings chart, cash vs online, tips, withdraw to bank
+- Profile with licensed-porter badge, languages, shift, verified documents and partner-since date
 
 ## Pricing (weight slabs, per coolie)
 
@@ -81,7 +105,7 @@ Change these in `src/data/fare.ts`.
 ```
 src/
   app/                     Expo Router screens
-    (auth)/                welcome, login, otp
+    (auth)/                gateway, welcome, login, otp, signup, partner-signup, partner-review
     (app)/(passenger)/     home, bookings, wallet, profile tabs
     (app)/(coolie)/        duty, jobs, earnings, profile tabs
     (app)/book/            train → point → luggage → schedule → review (+ map-pick)
@@ -90,12 +114,12 @@ src/
     (app)/job/             coolie's live job
     (app)/booking/, chat/  receipt/details, chat
   components/              UI kit (ui/), maps, tracker, sheets, cards
-  data/                    stations, trains & PNRs, coolies, areas, bags, fares, journey stages
-  store/useApp.ts          Zustand store (persisted with AsyncStorage) + the simulation tick
+  data/                    stations, trains & PNRs, coolies, areas, bags, fares, journey stages, demo accounts
+  store/useApp.ts          Zustand store: passenger and partner accounts, session, shared bookings, simulation tick
   i18n/                    en.ts, hi.ts
 ```
 
-All state lives on the device (AsyncStorage). *Profile → Reset demo data* wipes it.
+All state lives on the device (AsyncStorage). *Profile → Reset demo data* wipes everything, including new sign-ups, and restores the two demo accounts.
 
 ## Notes
 

@@ -13,7 +13,7 @@ import { prefersMap, STAGES, stageKey, stageVars } from '@/data/journey';
 import { useBooking } from '@/hooks/useBooking';
 import { useNow } from '@/hooks/useNow';
 import { loc, useLang, useT } from '@/i18n';
-import { jobEarning, useApp } from '@/store/useApp';
+import { jobEarning, useApp, useCoolie } from '@/store/useApp';
 import { C, R } from '@/theme';
 import { maskPhone, rupee } from '@/utils/format';
 import { backToTab } from '@/utils/nav';
@@ -24,6 +24,7 @@ export default function Job() {
   const lang = useLang();
   const { id } = useLocalSearchParams<{ id: string }>();
   const b = useBooking(id);
+  const me = useCoolie();
   const now = useNow(500);
   const arrived = useApp((s) => s.coolieArrived);
   const verifyOtp = useApp((s) => s.verifyOtp);
@@ -45,7 +46,7 @@ export default function Job() {
     }
   }, [phase]);
 
-  if (!b || !b.coolie?.isYou) {
+  if (!b || !me || b.coolie?.accountId !== me.id) {
     return (
       <Screen header={<TopBar />}>
         <Empty icon="briefcase-remove-outline" title={t('trip.notFound')} action={{ title: t('job.backDuty'), onPress: () => backToTab('/duty') }} />

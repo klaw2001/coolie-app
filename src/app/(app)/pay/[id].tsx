@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Card, Empty, Icon, ListRow, Row, Screen, SectionTitle, TopBar, Txt } from '@/components/ui';
 import { loc, useLang, useT } from '@/i18n';
-import { useApp } from '@/store/useApp';
+import { useApp, usePassenger } from '@/store/useApp';
 import { C, R } from '@/theme';
 import { rupee } from '@/utils/format';
 import { UPI_APPS } from '@/utils/payment';
@@ -14,9 +14,10 @@ export default function PayMethods() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const intent = useApp((s) => s.intents.find((i) => i.id === id));
   const booking = useApp((s) => s.bookings.find((b) => b.id === intent?.refId));
-  const balance = useApp((s) => s.walletBalance);
-  const cards = useApp((s) => s.savedCards);
-  const vpas = useApp((s) => s.savedUpi);
+  const me = usePassenger();
+  const balance = me?.walletBalance ?? 0;
+  const cards = me?.savedCards ?? [];
+  const vpas = me?.savedUpi ?? [];
   const setOutcome = useApp((s) => s.setIntentOutcome);
 
   if (!intent) {

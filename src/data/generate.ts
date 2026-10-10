@@ -1,4 +1,4 @@
-import type { AssignedCoolie, BagId, Booking, JourneyType, PayMethod, Place } from '@/store/types';
+import type { AssignedCoolie, BagId, Booking, CoolieAccount, JourneyType, PayMethod, Place } from '@/store/types';
 import { C } from '@/theme';
 import { offsetMeters, roadKm } from '@/utils/geo';
 import { bookingCode, hashStr, otp4, pick, rng } from '@/utils/id';
@@ -24,12 +24,23 @@ export function rosterCoolie(seedKey: string, stationCode: string): AssignedCool
     years: c.years,
     phone: c.phone,
     color: AVATAR_COLORS[h % AVATAR_COLORS.length],
-    isYou: false,
   };
 }
 
-export function youAsCoolie(p: { name: string; badge: string; rating: number; years: number }, phone: string, trips: number): AssignedCoolie {
-  return { id: 'you', name: p.name, badge: p.badge, rating: p.rating, trips, years: p.years, phone, color: C.red, isYou: true };
+/** A Coolie Partner account on this phone, as it appears on a booking. */
+export function accountCoolie(a: CoolieAccount, completedTrips: number): AssignedCoolie {
+  const p = a.profile;
+  return {
+    id: a.id,
+    accountId: a.id,
+    name: p.name,
+    badge: p.badge,
+    rating: p.rating,
+    trips: p.baseTrips + completedTrips,
+    years: p.years,
+    phone: a.phone,
+    color: C.red,
+  };
 }
 
 export function homePlace(stationCode: string, r: () => number): Place {
@@ -136,7 +147,7 @@ export function finishedCopy(b: Booking, coolie: AssignedCoolie, at: number, r: 
     statusAt: done,
     stage: stages.length - 1,
     stageAt: done,
-    mode: coolie.isYou ? 'manual' : 'auto',
+    mode: coolie.accountId ? 'manual' : 'auto',
     coolie,
     payStatus: b.payMethod === 'cash' ? 'cash_paid' : 'paid',
     timeline: [

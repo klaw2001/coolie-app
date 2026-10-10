@@ -1,45 +1,62 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { LangToggle } from '@/components/LangToggle';
-import { Logo } from '@/components/Logo';
+import { Logo, PartnerLogo } from '@/components/Logo';
 import { Button, Icon, Txt } from '@/components/ui';
 import { useT, type TKey } from '@/i18n';
 import { useApp } from '@/store/useApp';
-import { C } from '@/theme';
+import type { Role } from '@/store/types';
+import { C, PC } from '@/theme';
 
-const SLIDES: { icons: [string, string]; title: TKey; body: TKey }[] = [
-  { icons: ['human-dolly', 'train'], title: 'welcome.slide1.title', body: 'welcome.slide1.body' },
-  { icons: ['scale-balance', 'currency-inr'], title: 'welcome.slide2.title', body: 'welcome.slide2.body' },
-  { icons: ['map-marker-path', 'seat-recline-normal'], title: 'welcome.slide3.title', body: 'welcome.slide3.body' },
-];
+type Slide = { icons: [string, string]; title: TKey; body: TKey };
+
+const SLIDES: Record<Role, Slide[]> = {
+  passenger: [
+    { icons: ['human-dolly', 'train'], title: 'welcome.slide1.title', body: 'welcome.slide1.body' },
+    { icons: ['scale-balance', 'currency-inr'], title: 'welcome.slide2.title', body: 'welcome.slide2.body' },
+    { icons: ['map-marker-path', 'seat-recline-normal'], title: 'welcome.slide3.title', body: 'welcome.slide3.body' },
+  ],
+  coolie: [
+    { icons: ['bell-ring', 'train'], title: 'pw.s1.title', body: 'pw.s1.body' },
+    { icons: ['tag-check', 'scale-balance'], title: 'pw.s2.title', body: 'pw.s2.body' },
+    { icons: ['bank', 'cash-multiple'], title: 'pw.s3.title', body: 'pw.s3.body' },
+  ],
+};
 
 export default function Welcome() {
   const t = useT();
+  const { app: appParam } = useLocalSearchParams<{ app?: string }>();
+  const app: Role = appParam === 'coolie' ? 'coolie' : 'passenger';
+  const partner = app === 'coolie';
   const { width } = useWindowDimensions();
-  const finish = useApp((s) => s.finishOnboarding);
+  const markOnboarded = useApp((s) => s.markOnboarded);
   const ref = useRef<ScrollView>(null);
   const [page, setPage] = useState(0);
-  const last = page === SLIDES.length - 1;
+  const slides = SLIDES[app];
+  const last = page === slides.length - 1;
 
   const start = () => {
-    finish();
-    router.replace('/login');
+    markOnboarded(app);
+    router.replace({ pathname: '/login', params: { app } });
   };
 
   return (
-    <LinearGradient colors={[C.red, C.redDark, C.redDeep]} style={{ flex: 1 }}>
+    <LinearGradient colors={partner ? [PC.night2, PC.night, '#0E0809'] : [C.red, C.redDark, C.redDeep]} style={{ flex: 1 }}>
       <StatusBar style="light" />
       <SafeAreaView style={{ flex: 1 }}>
         <View style={s.top}>
+          <Pressable onPress={() => router.back()} hitSlop={10} style={s.back} accessibilityLabel={t('common.back')}>
+            <Icon name="arrow-left" size={22} color={C.white} />
+          </Pressable>
           <View style={s.brand}>
-            <Logo size={40} bg={C.white} fg={C.red} />
-            <Txt v="h1" color={C.white}>
-              {t('app.name')}
+            {partner ? <PartnerLogo size={36} /> : <Logo size={36} bg={C.white} fg={C.red} />}
+            <Txt v="h2" color={C.white}>
+              {partner ? t('partner.name') : t('app.name')}
             </Txt>
           </View>
           <LangToggle light />
@@ -52,16 +69,16 @@ export default function Welcome() {
           showsHorizontalScrollIndicator={false}
           onMomentumScrollEnd={(e) => setPage(Math.round(e.nativeEvent.contentOffset.x / width))}
           style={{ flex: 1 }}>
-          {SLIDES.map((sl, i) => (
+          {slides.map((sl, i) => (
             <View key={i} style={[s.slide, { width }]}>
               <View style={s.art}>
-                <View style={s.ringOuter}>
-                  <View style={s.ringInner}>
+                <View style={[s.ringOuter, partner && { backgroundColor: 'rgba(232,196,104,0.08)' }]}>
+                  <View style={[s.ringInner, partner && { backgroundColor: 'rgba(211,37,43,0.35)' }]}>
                     <Icon name={sl.icons[0]} size={84} color={C.white} />
                   </View>
                 </View>
-                <View style={s.chip}>
-                  <Icon name={sl.icons[1]} size={30} color={C.red} />
+                <View style={[s.chip, partner && { backgroundColor: PC.brassLight, borderColor: C.red }]}>
+                  <Icon name={sl.icons[1]} size={30} color={partner ? PC.night : C.red} />
                 </View>
               </View>
               <Txt v="display" color={C.white} center>
@@ -76,8 +93,8 @@ export default function Welcome() {
 
         <View style={s.bottom}>
           <View style={s.dots}>
-            {SLIDES.map((_, i) => (
-              <View key={i} style={[s.dot, i === page && s.dotOn]} />
+            {slides.map((_, i) => (
+              <View key={i} style={[s.dot, i === page && [s.dotOn, partner && { backgroundColor: PC.brassLight }]]} />
             ))}
           </View>
           <Button
@@ -102,7 +119,7 @@ export default function Welcome() {
             <View style={s.skip} />
           )}
           <Txt v="tiny" color="rgba(255,255,255,0.7)" center>
-            {t('app.tagline')}
+            {partner ? t('partner.tagline') : t('app.tagline')}
           </Txt>
         </View>
       </SafeAreaView>
@@ -111,8 +128,9 @@ export default function Welcome() {
 }
 
 const s = StyleSheet.create({
-  top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 8 },
-  brand: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8, gap: 10 },
+  back: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center' },
+  brand: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   slide: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, gap: 14 },
   art: { marginBottom: 24 },
   ringOuter: { width: 210, height: 210, borderRadius: 105, backgroundColor: 'rgba(255,255,255,0.10)', alignItems: 'center', justifyContent: 'center' },

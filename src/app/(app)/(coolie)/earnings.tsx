@@ -1,24 +1,29 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { StyleSheet, View } from 'react-native';
 
-import { Button, Card, Icon, Row, Screen, SectionTitle, TopBar, Txt } from '@/components/ui';
+import { PartnerTopBar } from '@/components/PartnerTopBar';
+import { Button, Card, Icon, Row, Screen, SectionTitle, Txt } from '@/components/ui';
 import { useNow } from '@/hooks/useNow';
 import { useLang, useT } from '@/i18n';
-import { coolieBalance, coolieJobs, jobEarning, useApp } from '@/store/useApp';
-import { C, R } from '@/theme';
+import { balanceOf, coolieJobs, jobEarning, useApp, useCoolie } from '@/store/useApp';
+import { C, PC, R } from '@/theme';
 import { dayLabel, fmtDateTime, rupee, startOfDay } from '@/utils/format';
 import { txnTitle } from '@/utils/txn';
 import { notify } from '@/utils/dialog';
+
+const BONUS_TARGET = 40;
+const BONUS_AMOUNT = 500;
 
 export default function Earnings() {
   const t = useT();
   const lang = useLang();
   const now = useNow(60_000);
+  const me = useCoolie();
   const bookings = useApp((s) => s.bookings);
   const allTxns = useApp((s) => s.txns);
   const withdraw = useApp((s) => s.withdraw);
-  const txns = allTxns.filter((x) => x.owner === 'coolie').sort((a, b) => b.at - a.at);
-  const done = coolieJobs(bookings).filter((b) => b.status === 'completed');
+  const txns = allTxns.filter((x) => x.ownerId === me?.id).sort((a, b) => b.at - a.at);
+  const done = coolieJobs(bookings, me?.id).filter((b) => b.status === 'completed');
   const today0 = startOfDay(now);
   const days = Array.from({ length: 7 }, (_, i) => today0 - (6 - i) * 86400000);
   const perDay = days.map((d) => done.filter((b) => b.statusAt >= d && b.statusAt < d + 86400000).reduce((x, b) => x + jobEarning(b), 0));
@@ -28,21 +33,44 @@ export default function Earnings() {
   const tips = week.reduce((x, b) => x + (b.tip?.amount ?? 0), 0);
   const cash = week.filter((b) => b.payMethod === 'cash').reduce((x, b) => x + b.fare.total, 0);
   const online = week.filter((b) => b.payMethod !== 'cash').reduce((x, b) => x + b.fare.total, 0);
-  const balance = coolieBalance(allTxns);
+  const balance = balanceOf(allTxns, me?.id);
+  const left = Math.max(0, BONUS_TARGET - week.length);
 
   return (
-    <Screen header={<TopBar title={t('earn.title')} back={false} />}>
-      <LinearGradient colors={[C.red, C.redDeep]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.hero}>
-        <Txt v="smallMed" color="rgba(255,255,255,0.85)">
+    <Screen edges={[]} header={<PartnerTopBar title={t('earn.title')} back={false} />}>
+      <LinearGradient colors={[PC.night3, PC.night]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.hero}>
+        <Txt v="smallMed" color={PC.nightText}>
           {t('earn.week')}
         </Txt>
-        <Txt v="display" color={C.white} size={36}>
+        <Txt v="display" color={PC.brassLight} size={36}>
           {rupee(weekTotal)}
         </Txt>
-        <Txt v="small" color="rgba(255,255,255,0.85)">
+        <Txt v="small" color={PC.nightText}>
           {week.length} {t('earn.trips')} · {t('earn.avg')} {rupee(week.length ? weekTotal / week.length : 0)}
         </Txt>
       </LinearGradient>
+
+      <Card style={{ gap: 10 }}>
+        <Row gap={10}>
+          <View style={s.bonusIcon}>
+            <Icon name="trophy" size={22} color={C.brass} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Txt v="bodyMed">{t('earn.bonus')}</Txt>
+            <Txt v="tiny" color={C.muted}>
+              {left > 0
+                ? t('earn.bonusBody', { done: week.length, target: BONUS_TARGET, left, amount: rupee(BONUS_AMOUNT) })
+                : t('earn.bonusDone', { amount: rupee(BONUS_AMOUNT) })}
+            </Txt>
+          </View>
+          <Txt v="h3" color={C.brass}>
+            {rupee(BONUS_AMOUNT)}
+          </Txt>
+        </Row>
+        <View style={s.track}>
+          <View style={[s.fill, { width: `${Math.min(100, (week.length / BONUS_TARGET) * 100)}%` }]} />
+        </View>
+      </Card>
 
       <SectionTitle title={t('earn.daily')} />
       <Card>
@@ -83,6 +111,7 @@ export default function Earnings() {
         </Row>
         <Button
           title={t('earn.withdraw')}
+          variant="dark"
           size="md"
           icon="bank-transfer-out"
           disabled={balance <= 0}
@@ -133,6 +162,9 @@ function Tile({ icon, label, value }: { icon: string; label: string; value: stri
 
 const s = StyleSheet.create({
   hero: { borderRadius: R.xl, padding: 20, gap: 4 },
+  bonusIcon: { width: 42, height: 42, borderRadius: R.sm, backgroundColor: C.brassSoft, alignItems: 'center', justifyContent: 'center' },
+  track: { height: 8, borderRadius: 4, backgroundColor: C.line, overflow: 'hidden' },
+  fill: { height: 8, borderRadius: 4, backgroundColor: C.brass },
   chart: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', height: 180, gap: 6 },
   col: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', gap: 4 },
   bar: { width: '70%', borderRadius: 6 },

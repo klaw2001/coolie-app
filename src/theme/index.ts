@@ -26,6 +26,18 @@ export const C = {
   overlay: 'rgba(36,22,22,0.5)',
 };
 
+/** Coolie Partner app: the same uniform red, set against a dark, night-shift background. */
+export const PC = {
+  night: '#1A1011',
+  night2: '#2B1517',
+  night3: '#3A2022',
+  nightLine: 'rgba(255,255,255,0.12)',
+  nightText: 'rgba(255,255,255,0.72)',
+  brassLight: '#E8C468',
+  online: '#16A34A',
+  onlineLight: '#4ADE80',
+};
+
 export const R = { xs: 6, sm: 10, md: 14, lg: 18, xl: 24, pill: 999 };
 
 export const F = {

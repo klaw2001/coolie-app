@@ -4,7 +4,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { Button, Card, Empty, Icon, ListRow, Row, Screen, SectionTitle, TopBar, Txt } from '@/components/ui';
 import { useLang, useT } from '@/i18n';
-import { useApp } from '@/store/useApp';
+import { useApp, usePassenger } from '@/store/useApp';
 import { C, R } from '@/theme';
 import { fmtDateTime, rupee } from '@/utils/format';
 import { txnTitle } from '@/utils/txn';
@@ -13,11 +13,12 @@ import { confirmDialog } from '@/utils/dialog';
 export default function Wallet() {
   const t = useT();
   const lang = useLang();
-  const balance = useApp((s) => s.walletBalance);
+  const me = usePassenger();
   const allTxns = useApp((s) => s.txns);
-  const txns = allTxns.filter((x) => x.owner === 'passenger');
-  const cards = useApp((s) => s.savedCards);
-  const vpas = useApp((s) => s.savedUpi);
+  const balance = me?.walletBalance ?? 0;
+  const txns = allTxns.filter((x) => x.ownerId === me?.id);
+  const cards = me?.savedCards ?? [];
+  const vpas = me?.savedUpi ?? [];
   const removeCard = useApp((s) => s.removeCard);
   const removeUpi = useApp((s) => s.removeUpi);
 

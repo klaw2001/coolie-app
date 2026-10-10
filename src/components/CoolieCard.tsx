@@ -30,7 +30,6 @@ export function CoolieCard({ coolie, onCall, onChat, onSos, unread = 0, title }:
           ) : null}
           <Txt v="h3" numberOfLines={1}>
             {loc(lang, coolie.name, coolie.nameHi)}
-            {coolie.isYou ? ` (${t('common.you')})` : ''}
           </Txt>
           <View style={s.meta}>
             <Icon name="star" size={14} color="#E9A912" />

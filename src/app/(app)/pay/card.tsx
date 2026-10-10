@@ -5,7 +5,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { Banner, Button, Field, Icon, OtpBoxes, Row, Screen, StickyFooter, Toggle, TopBar, Txt } from '@/components/ui';
 import { useT } from '@/i18n';
-import { useApp } from '@/store/useApp';
+import { useApp, usePassenger } from '@/store/useApp';
 import { C, R } from '@/theme';
 import { rupee } from '@/utils/format';
 import { cardBrand, DECLINE_CARD, formatCard, formatExpiry, luhn, validExpiry } from '@/utils/payment';
@@ -14,8 +14,9 @@ export default function CardPay() {
   const t = useT();
   const { id, saved } = useLocalSearchParams<{ id: string; saved?: string }>();
   const intent = useApp((s) => s.intents.find((i) => i.id === id));
-  const savedCard = useApp((s) => s.savedCards.find((c) => c.id === saved));
-  const phone = useApp((s) => s.phone);
+  const me = usePassenger();
+  const savedCard = me?.savedCards.find((c) => c.id === saved);
+  const phone = me?.phone ?? '';
   const setOutcome = useApp((s) => s.setIntentOutcome);
   const saveCard = useApp((s) => s.saveCard);
 

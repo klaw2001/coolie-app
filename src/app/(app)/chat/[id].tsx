@@ -18,15 +18,15 @@ export default function Chat() {
   const lang = useLang();
   const { id } = useLocalSearchParams<{ id: string }>();
   const b = useBooking(id);
-  const role = useApp((s) => s.role) ?? 'passenger';
+  const session = useApp((s) => s.session);
   const send = useApp((s) => s.sendMessage);
   const [text, setText] = useState('');
   const [call, setCall] = useState(false);
   const list = useRef<FlatList>(null);
   if (!b) return null;
 
-  // In coolie mode you're the coolie on this booking; otherwise you're the passenger.
-  const me = role === 'coolie' && b.coolie?.isYou ? 'coolie' : 'passenger';
+  // Signed into Coolie Partner as the coolie on this booking: you speak as the coolie. Otherwise as the passenger.
+  const me = session?.app === 'coolie' && b.coolie?.accountId === session.accountId ? 'coolie' : 'passenger';
   const otherName = me === 'passenger' ? (b.coolie ? loc(lang, b.coolie.name, b.coolie.nameHi) : '') : b.passengerName;
   const otherPhone = me === 'passenger' ? (b.coolie?.phone ?? '') : b.passengerPhone;
   const qr = me === 'passenger' ? PASSENGER_QR : COOLIE_QR;

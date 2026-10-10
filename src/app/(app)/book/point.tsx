@@ -8,7 +8,7 @@ import { AREAS } from '@/data/areas';
 import { MAX_HOME_KM, PER_KM } from '@/data/fare';
 import { coachPlace, EXIT_POINTS, MEET_POINTS, POINT_ICON, pointPlace, station, type StationPoint } from '@/data/stations';
 import { loc, useLang, useT } from '@/i18n';
-import { useApp } from '@/store/useApp';
+import { useApp, usePassenger } from '@/store/useApp';
 import type { Place } from '@/store/types';
 import { C } from '@/theme';
 import { km, rupee } from '@/utils/format';
@@ -18,7 +18,7 @@ export default function PointStep() {
   const t = useT();
   const lang = useLang();
   const draft = useApp((s) => s.draft);
-  const addresses = useApp((s) => s.addresses);
+  const addresses = usePassenger()?.addresses ?? [];
   const patchDraft = useApp((s) => s.patchDraft);
   const train = draft.train;
   if (!train) return null;

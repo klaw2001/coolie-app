@@ -73,13 +73,13 @@ export default function BookingDetail() {
       <Card style={{ gap: 12 }}>
         <Row gap={12}>
           <JourneyArt type={b.journeyType} />
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, gap: 4 }}>
             <Txt v="h3">{t(`journey.${b.journeyType}`)}</Txt>
             <Txt v="tiny" color={C.muted}>
               {loc(lang, st.name, st.nameHi)}
             </Txt>
+            <StatusPill status={b.status} />
           </View>
-          <StatusPill status={b.status} />
         </Row>
         <Row between>
           <Txt v="small" color={C.muted}>

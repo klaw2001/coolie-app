@@ -36,7 +36,7 @@ export function BookingCard({ b, onPress, coolieView }: { b: Booking; onPress: (
       </View>
       <View style={s.bottom}>
         <Txt v="small" color={C.muted} numberOfLines={1} style={{ flex: 1 }}>
-          {coolieView ? b.passengerName : b.coolie ? loc(lang, b.coolie.name, b.coolie.nameHi) : '—'} · {t('common.coach', { c: b.train.coach })}
+          {coolieView ? b.passengerName : b.coolie ? loc(lang, b.coolie.name, b.coolie.nameHi) : loc(lang, b.meet.title, b.meet.titleHi)} · {t('common.coach', { c: b.train.coach })}
         </Txt>
         <Txt v="num">{rupee(b.fare.total + (b.tip?.amount ?? 0))}</Txt>
       </View>

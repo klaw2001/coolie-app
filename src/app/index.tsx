@@ -2,17 +2,12 @@ import { Redirect } from 'expo-router';
 
 import { useApp } from '@/store/useApp';
 
-/** Sends people to the right place: onboarding, login, role choice, profile setup, or their home tab. */
+/** Signed-in users land in their own app; everyone else starts at the gateway. */
 export default function Index() {
-  const onboarded = useApp((s) => s.onboarded);
-  const loggedIn = useApp((s) => s.loggedIn);
-  const role = useApp((s) => s.role);
-  const hasPassenger = useApp((s) => !!s.passenger);
-  const hasCoolie = useApp((s) => !!s.coolie);
+  const session = useApp((s) => s.session);
+  const authIntent = useApp((s) => s.authIntent);
 
-  if (!onboarded) return <Redirect href="/welcome" />;
-  if (!loggedIn) return <Redirect href="/login" />;
-  if (!role) return <Redirect href="/role" />;
-  if (role === 'passenger') return hasPassenger ? <Redirect href="/home" /> : <Redirect href="/setup?role=passenger" />;
-  return hasCoolie ? <Redirect href="/duty" /> : <Redirect href="/setup?role=coolie" />;
+  if (session) return <Redirect href={session.app === 'passenger' ? '/home' : '/duty'} />;
+  if (authIntent) return <Redirect href={{ pathname: '/login', params: { app: authIntent } }} />;
+  return <Redirect href="/gateway" />;
 }
